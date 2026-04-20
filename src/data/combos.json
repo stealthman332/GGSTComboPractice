@@ -1,0 +1,38 @@
+{
+  "characters": {
+    "Lucy": [
+      {
+        "name": "Midscreen BnB Route",
+        "sequence": [
+          {"expected": "c.S", "move": "Close Slash", "max_frames": 0},
+          {"expected": "2S", "move": "Crouch Slash", "max_frames": 20},
+          {"expected": "5H", "move": "Standing Heavy", "max_frames": 25},
+          {"expected": "214P", "move": "Monowire Whip", "max_frames": 30}
+        ],
+        "notes": "Standard grounded hit confirm. Cancel the 5H into the 214P ender."
+      },
+      {
+        "name": "Counter-Hit Anti-Air",
+        "sequence": [
+          {"expected": "6P", "move": "Forward Punch", "max_frames": 0},
+          {"expected": "214S", "move": "Grapple Pull", "max_frames": 30},
+          {"expected": "c.S", "move": "Close Slash", "max_frames": 40},
+          {"expected": "623H", "move": "Uppercut", "max_frames": 30}
+        ],
+        "notes": "Wait slightly for the grapple to pull them in before pressing c.S."
+      },
+      {
+        "name": "Corner Wall-Break",
+        "sequence": [
+          {"expected": "c.S", "move": "Close Slash", "max_frames": 0},
+          {"expected": "6H", "move": "Forward Heavy", "max_frames": 25},
+          {"expected": "236K", "move": "Netrunner Slide", "max_frames": 30},
+          {"expected": "5K", "move": "Standing Kick", "max_frames": 35},
+          {"expected": "6H", "move": "Forward Heavy", "max_frames": 25},
+          {"expected": "236236S", "move": "Overdrive (Super)", "max_frames": 40}
+        ],
+        "notes": "Wall slump route leading into her wall-break super."
+      }
+    ]
+  }
+}

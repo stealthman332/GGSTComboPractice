@@ -1,0 +1,13 @@
+{
+    "keybinds": {
+        "a": "left",
+        "s": "down",
+        "d": "right",
+        "j": "P",
+        "k": "K",
+        "space": "up",
+        "i": "S",
+        "o": "H",
+        "u": "D"
+    }
+}
