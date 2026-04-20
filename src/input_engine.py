@@ -6,7 +6,10 @@ class InputEngine:
         self.buffer_size = 60
         self.frame_buffer = []
         self.combo_data = {}
+        
         self.key_map = {}
+        self.prefs = {} # Stores visualizer preferences
+        
         self.data_path = data_path
         self.config_path = config_path
         
@@ -23,34 +26,40 @@ class InputEngine:
                 self.combo_data = json.load(f).get("characters", {})
 
     def load_config(self):
-        # Default fallback map now includes a RESET utility key
         default_map = {
             'w': 'up', 'a': 'left', 's': 'down', 'd': 'right',
             'u': 'P', 'i': 'K', 'o': 'S', 'j': 'H', 'k': 'D',
             'space': 'RESET'
         }
+        default_prefs = {"visualizer": "hitbox"}
+        
         if os.path.exists(self.config_path):
             try:
                 with open(self.config_path, 'r') as f:
-                    self.key_map = json.load(f).get("keybinds", default_map)
+                    data = json.load(f)
+                    self.key_map = data.get("keybinds", default_map)
+                    self.prefs = data.get("prefs", default_prefs)
             except json.JSONDecodeError:
                 self.key_map = default_map
+                self.prefs = default_prefs
         else:
             self.key_map = default_map
+            self.prefs = default_prefs
             self.save_config()
 
-    def save_config(self, new_map=None):
-        if new_map:
-            self.key_map = new_map
+    def save_config(self, new_map=None, new_prefs=None):
+        if new_map: self.key_map = new_map
+        if new_prefs: self.prefs = new_prefs
+            
         os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
         with open(self.config_path, 'w') as f:
-            json.dump({"keybinds": self.key_map}, f, indent=4)
+            json.dump({
+                "keybinds": self.key_map,
+                "prefs": self.prefs
+            }, f, indent=4)
 
-    def get_characters(self):
-        return list(self.combo_data.keys())
-
-    def get_combos(self, char):
-        return [c["name"] for c in self.combo_data.get(char, [])]
+    def get_characters(self): return list(self.combo_data.keys())
+    def get_combos(self, char): return [c["name"] for c in self.combo_data.get(char, [])]
 
     def load_combo(self, char, combo_name):
         for c in self.combo_data.get(char, []):
@@ -87,8 +96,7 @@ class InputEngine:
             self.frame_buffer.pop(0)
 
     def check_input(self, pressed_button, current_frame):
-        if not self.current_combo:
-            return None, "No combo loaded."
+        if not self.current_combo: return None, "No combo loaded."
 
         target = self.current_combo["sequence"][self.combo_step]
         expected_full = target["expected"]
@@ -103,7 +111,7 @@ class InputEngine:
             return False, f"Expected {expected_button}, got {pressed_button}."
 
         frames_since_last = current_frame - self.last_input_frame
-        if self.combo_step > 0 and frames_since_last > max_frames:
+        if self.combo_step > 0 and frames_since_last > max_frames + 5: # Added 5f leniency for rhythm sync
             self.combo_step = 0
             return False, f"Dropped! Took {frames_since_last}f (Max {max_frames}f)."
 
@@ -125,10 +133,8 @@ class InputEngine:
     def _check_motion_in_buffer(self, target_motion):
         search_index = len(target_motion) - 1
         lookback_window = self.frame_buffer[-30:] 
-        
         for frame_dir in reversed(lookback_window):
             if frame_dir == target_motion[search_index]:
                 search_index -= 1
-                if search_index < 0:
-                    return True 
+                if search_index < 0: return True 
         return False

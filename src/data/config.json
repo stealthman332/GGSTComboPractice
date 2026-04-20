@@ -10,5 +10,8 @@
         "o": "H",
         "u": "D",
         "w": "RESET"
+    },
+    "prefs": {
+        "visualizer": "hitbox"
     }
 }
