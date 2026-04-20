@@ -12,6 +12,6 @@
         "w": "RESET"
     },
     "prefs": {
-        "visualizer": "hitbox"
+        "visualizer": "keyboard"
     }
 }

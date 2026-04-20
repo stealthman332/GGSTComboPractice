@@ -6,13 +6,10 @@ class InputEngine:
         self.buffer_size = 60
         self.frame_buffer = []
         self.combo_data = {}
-        
-        self.key_map = {}
-        self.prefs = {} # Stores visualizer preferences
-        
         self.data_path = data_path
         self.config_path = config_path
         
+        # Load data first, then config/prefs
         self.load_data()
         self.load_config()
         
@@ -26,11 +23,17 @@ class InputEngine:
                 self.combo_data = json.load(f).get("characters", {})
 
     def load_config(self):
+        # Default fallback map now includes a RESET utility key mapping (e.g., Space)
+        # and distinct arrow mappings for directions for full keyboard realism
         default_map = {
             'w': 'up', 'a': 'left', 's': 'down', 'd': 'right',
             'u': 'P', 'i': 'K', 'o': 'S', 'j': 'H', 'k': 'D',
-            'space': 'RESET'
+            'space': 'RESET',
+            # Add explicit arrow keys for direction keys visual/logic parity if drawn separately
+            'Up': 'up', 'Down': 'down', 'Left': 'left', 'Right': 'right' 
         }
+        
+        # Default fallback preferences now include the visualizer type (hitbox/keyboard)
         default_prefs = {"visualizer": "hitbox"}
         
         if os.path.exists(self.config_path):
@@ -48,18 +51,24 @@ class InputEngine:
             self.save_config()
 
     def save_config(self, new_map=None, new_prefs=None):
-        if new_map: self.key_map = new_map
-        if new_prefs: self.prefs = new_prefs
+        if new_map:
+            self.key_map = new_map
+        if new_prefs:
+            self.prefs = new_prefs
             
         os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
         with open(self.config_path, 'w') as f:
+            # Save both bindings and preferences in a nested structure
             json.dump({
                 "keybinds": self.key_map,
                 "prefs": self.prefs
             }, f, indent=4)
 
-    def get_characters(self): return list(self.combo_data.keys())
-    def get_combos(self, char): return [c["name"] for c in self.combo_data.get(char, [])]
+    def get_characters(self):
+        return list(self.combo_data.keys())
+
+    def get_combos(self, char):
+        return [c["name"] for c in self.combo_data.get(char, [])]
 
     def load_combo(self, char, combo_name):
         for c in self.combo_data.get(char, []):
@@ -96,7 +105,8 @@ class InputEngine:
             self.frame_buffer.pop(0)
 
     def check_input(self, pressed_button, current_frame):
-        if not self.current_combo: return None, "No combo loaded."
+        if not self.current_combo:
+            return None, "No combo loaded."
 
         target = self.current_combo["sequence"][self.combo_step]
         expected_full = target["expected"]
@@ -108,17 +118,19 @@ class InputEngine:
 
         if pressed_button != expected_button:
             self.combo_step = 0
-            return False, f"Expected {expected_button}, got {pressed_button}."
+            return False, f"Wrong button. Expected {expected_button}, got {pressed_button}."
 
         frames_since_last = current_frame - self.last_input_frame
-        if self.combo_step > 0 and frames_since_last > max_frames + 5: # Added 5f leniency for rhythm sync
+        # Account for early spawning/timing beat, maybe add some leniency, 
+        # but stick to the max_frames rule
+        if self.combo_step > 0 and frames_since_last > max_frames:
             self.combo_step = 0
-            return False, f"Dropped! Took {frames_since_last}f (Max {max_frames}f)."
+            return False, f"Too slow! Took {frames_since_last}f (Max {max_frames}f)."
 
         if expected_motion != "5":
             if not self._check_motion_in_buffer(expected_motion):
                 self.combo_step = 0
-                return False, f"Motion failed. Expected {expected_motion}."
+                return False, f"Failed motion. Expected {expected_motion}."
 
         self.last_input_frame = current_frame
         self.combo_step += 1
@@ -133,8 +145,10 @@ class InputEngine:
     def _check_motion_in_buffer(self, target_motion):
         search_index = len(target_motion) - 1
         lookback_window = self.frame_buffer[-30:] 
+        
         for frame_dir in reversed(lookback_window):
             if frame_dir == target_motion[search_index]:
                 search_index -= 1
-                if search_index < 0: return True 
+                if search_index < 0:
+                    return True 
         return False
