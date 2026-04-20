@@ -23,10 +23,11 @@ class InputEngine:
                 self.combo_data = json.load(f).get("characters", {})
 
     def load_config(self):
-        # Default fallback map
+        # Default fallback map now includes a RESET utility key
         default_map = {
             'w': 'up', 'a': 'left', 's': 'down', 'd': 'right',
-            'u': 'P', 'i': 'K', 'o': 'S', 'j': 'H', 'k': 'D'
+            'u': 'P', 'i': 'K', 'o': 'S', 'j': 'H', 'k': 'D',
+            'space': 'RESET'
         }
         if os.path.exists(self.config_path):
             try:
@@ -93,24 +94,23 @@ class InputEngine:
         expected_full = target["expected"]
         max_frames = target["max_frames"]
         
-        # Clean Dustloop notations (c.S, f.S, j.H) to isolate the raw button and motion
         clean_expected = expected_full.replace("c.", "").replace("f.", "").replace("j.", "")
         expected_button = clean_expected[-1] 
         expected_motion = clean_expected[:-1] if len(clean_expected) > 1 else "5"
 
         if pressed_button != expected_button:
             self.combo_step = 0
-            return False, f"Wrong button. Expected {expected_button}, got {pressed_button}."
+            return False, f"Expected {expected_button}, got {pressed_button}."
 
         frames_since_last = current_frame - self.last_input_frame
         if self.combo_step > 0 and frames_since_last > max_frames:
             self.combo_step = 0
-            return False, f"Too slow! Took {frames_since_last}f (Max {max_frames}f)."
+            return False, f"Dropped! Took {frames_since_last}f (Max {max_frames}f)."
 
         if expected_motion != "5":
             if not self._check_motion_in_buffer(expected_motion):
                 self.combo_step = 0
-                return False, f"Failed motion. Expected {expected_motion}."
+                return False, f"Motion failed. Expected {expected_motion}."
 
         self.last_input_frame = current_frame
         self.combo_step += 1
@@ -118,6 +118,7 @@ class InputEngine:
         is_finished = self.combo_step >= len(self.current_combo["sequence"])
         if is_finished:
             self.combo_step = 0 
+            return True, "COMBO_COMPLETE"
             
         return True, f"Hit: {expected_full}"
 
