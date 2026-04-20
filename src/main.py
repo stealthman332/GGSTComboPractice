@@ -5,10 +5,9 @@ import math
 from input_engine import InputEngine
 
 # Visual Configuration
-PIXELS_PER_FRAME = 8
-PLAYHEAD_X = 550
-TRACK_BUTTON_Y = 30
-TRACK_DIR_Y = 80
+PIXELS_PER_FRAME = 6
+PLAYHEAD_X = 150 # Moved to the left for Rhythm Game style
+TRACK_Y = 50
 
 # Neon Cyberpunk Palette
 BG_COLOR = "#0f0f15"
@@ -21,20 +20,15 @@ BTN_COLORS = {
     'K': '#00d4ff', # Cyan
     'S': '#00ff88', # Neon Green
     'H': '#ff2a00', # Electric Red
-    'D': '#ffaa00'  # Orange
-}
-
-ARROW_MAP = {
-    '1': '↙', '2': '↓', '3': '↘',
-    '4': '←', '5': '•', '6': '→',
-    '7': '↖', '8': '↑', '9': '↗'
+    'D': '#ffaa00', # Orange
+    'DIR': '#ffffff' # White for directions
 }
 
 class TrainerApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("GGST Combo Trainer V1.4 - Training Environment")
-        self.geometry("750x700")
+        self.title("GGST Combo Trainer V1.5 - Rhythm Engine")
+        self.geometry("800x750")
         self.configure(bg=BG_COLOR)
         
         self.engine = InputEngine()
@@ -45,15 +39,15 @@ class TrainerApp(tk.Tk):
         self.current_frame = 0
         self.last_tick_time = time.perf_counter()
         
-        # Training Environment State
-        self.state = "IDLE" # IDLE, COUNTDOWN, PRACTICING, RESULT
+        # Rhythm Game State
+        self.state = "IDLE" 
         self.state_timer = 0
+        self.combo_timer = 0 # Absolute frame counter for the current combo attempt
+        self.target_timeline = [] # Stores pre-calculated absolute frames for blocks
         self.canvas_bg = "#050508"
         
         # Input State
         self.keys_held = set()
-        self.active_buttons = {} 
-        self.past_buttons = []   
         
         self.create_widgets()
         self.populate_ui()
@@ -64,7 +58,6 @@ class TrainerApp(tk.Tk):
         self.tick()
 
     def create_widgets(self):
-        # --- Custom Styling ---
         style = ttk.Style(self)
         style.theme_use('clam')
         style.configure('TFrame', background=PANEL_COLOR)
@@ -72,7 +65,7 @@ class TrainerApp(tk.Tk):
         style.configure('TButton', background="#333", foreground="white", borderwidth=0, padding=5)
         style.map('TButton', background=[('active', ACCENT_COLOR)])
         
-        # --- Top Menu ---
+        # Top Menu
         menu_frame = ttk.Frame(self, padding=15)
         menu_frame.pack(fill=tk.X, pady=(0, 10))
 
@@ -89,26 +82,26 @@ class TrainerApp(tk.Tk):
         self.btn_settings = ttk.Button(menu_frame, text="⚙️ Controls", command=self.open_settings)
         self.btn_settings.pack(side=tk.RIGHT, padx=5)
 
-        # --- Dynamic Target Display ---
+        # Target Display
         target_frame = tk.Frame(self, bg=BG_COLOR)
-        target_frame.pack(fill=tk.X, pady=10)
+        target_frame.pack(fill=tk.X, pady=5)
         
         self.lbl_status = tk.Label(target_frame, text="STANDBY", font=("Impact", 14), bg=BG_COLOR, fg="#555")
         self.lbl_status.pack()
 
-        self.lbl_target = tk.Label(target_frame, text="Select a route", font=("Arial Black", 28), bg=BG_COLOR, fg="white")
+        self.lbl_target = tk.Label(target_frame, text="Select a route", font=("Arial Black", 24), bg=BG_COLOR, fg="white")
         self.lbl_target.pack()
 
-        # --- SCROLLING TIMELINE CANVAS ---
+        # SCROLLING TIMELINE & HITBOX CANVAS
         canvas_container = tk.Frame(self, bg=BG_COLOR, padx=15)
         canvas_container.pack(fill=tk.X)
         
-        self.canvas = tk.Canvas(canvas_container, height=140, bg=self.canvas_bg, highlightthickness=2, highlightbackground="#333")
+        self.canvas = tk.Canvas(canvas_container, height=250, bg=self.canvas_bg, highlightthickness=2, highlightbackground="#333")
         self.canvas.pack(fill=tk.X, pady=5)
 
-        # --- Event Log ---
-        self.log = tk.Text(self, height=10, state=tk.DISABLED, bg=PANEL_COLOR, fg=TEXT_COLOR, font=("Consolas", 11), bd=0, padx=10, pady=10)
-        self.log.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        # Event Log
+        self.log = tk.Text(self, height=8, state=tk.DISABLED, bg=PANEL_COLOR, fg=TEXT_COLOR, font=("Consolas", 11), bd=0, padx=10, pady=10)
+        self.log.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
 
     def log_message(self, msg, color=TEXT_COLOR):
         self.log.config(state=tk.NORMAL)
@@ -137,11 +130,35 @@ class TrainerApp(tk.Tk):
             self.trigger_reset()
 
     def update_target_display(self):
-        if self.engine.current_combo:
+        if self.engine.current_combo and self.engine.combo_step < len(self.engine.current_combo["sequence"]):
             target = self.engine.current_combo["sequence"][self.engine.combo_step]
             self.lbl_target.config(text=f"{target['expected']} ({target['move']})", fg="white")
 
-    # --- TRAINING ENVIRONMENT STATE MACHINE ---
+    # --- RHYTHM GAME LOGIC ---
+    def calculate_rhythm_timeline(self):
+        """Pre-calculates when blocks should cross the playhead."""
+        self.target_timeline = []
+        if not self.engine.current_combo: return
+        
+        accumulated_frames = 0
+        for i, step in enumerate(self.engine.current_combo["sequence"]):
+            max_f = step["max_frames"]
+            if i == 0:
+                accumulated_frames = 0 # First hit is immediate
+            else:
+                # Add a base gap so blocks don't overlap, plus the combo's max_frames
+                accumulated_frames += max_f if max_f > 0 else 30 
+                
+            clean_btn = step["expected"].replace("c.", "").replace("f.", "").replace("j.", "")[-1]
+            
+            self.target_timeline.append({
+                "step_index": i,
+                "abs_frame": accumulated_frames,
+                "btn": clean_btn,
+                "full_text": step["expected"],
+                "hit": False # Tracks if the user successfully hit this block
+            })
+
     def trigger_reset(self):
         self.state = "COUNTDOWN"
         self.state_timer = time.time()
@@ -158,11 +175,11 @@ class TrainerApp(tk.Tk):
         if success:
             self.lbl_status.config(text="EXCELLENT", fg="#00ff88")
             self.lbl_target.config(text="COMBO COMPLETE!", fg="#00ff88")
-            self.canvas_bg = "#002211" # Flash green
+            self.canvas_bg = "#002211" 
         else:
             self.lbl_status.config(text="DROPPED", fg="#ff2a00")
             self.lbl_target.config(text=message, fg="#ff2a00")
-            self.canvas_bg = "#330000" # Flash red
+            self.canvas_bg = "#330000" 
 
     # --- INPUT HANDLING ---
     def on_key_press(self, event):
@@ -171,43 +188,170 @@ class TrainerApp(tk.Tk):
             self.keys_held.add(key)
             mapped_action = self.engine.key_map.get(key)
             
-            # Global Environment Controls
             if mapped_action == 'RESET':
                 self.trigger_reset()
                 return
 
-            # Attack Inputs (Only process if actively practicing)
-            if mapped_action in ['P', 'K', 'S', 'H', 'D']:
-                self.active_buttons[mapped_action] = self.current_frame
+            if mapped_action in ['P', 'K', 'S', 'H', 'D'] and self.state == "PRACTICING":
+                success, message = self.engine.check_input(mapped_action, self.current_frame)
                 
-                if self.state == "PRACTICING":
-                    success, message = self.engine.check_input(mapped_action, self.current_frame)
-                    
-                    if success:
-                        if message == "COMBO_COMPLETE":
-                            self.trigger_result(True, "")
-                        else:
-                            self.log_message(f"HIT: {message}")
-                            self.update_target_display()
+                if success:
+                    # Mark the visual block as "hit"
+                    if self.engine.combo_step > 0:
+                        self.target_timeline[self.engine.combo_step - 1]["hit"] = True
+                        
+                    if message == "COMBO_COMPLETE":
+                        self.trigger_result(True, "")
                     else:
-                        self.log_message(f"MISS: {message}")
-                        self.trigger_result(False, message)
+                        self.log_message(f"HIT: {message}")
+                        self.update_target_display()
+                else:
+                    self.log_message(f"MISS: {message}")
+                    self.trigger_result(False, message)
 
     def on_key_release(self, event):
         key = event.keysym.lower()
         if key in self.keys_held:
             self.keys_held.remove(key)
-            mapped_action = self.engine.key_map.get(key)
+
+    # --- RENDER LOOP ---
+    def tick(self):
+        now = time.perf_counter()
+        elapsed = now - self.last_tick_time
+        
+        if elapsed >= self.frame_duration:
+            self.current_frame += 1
+            self.last_tick_time = now
             
-            if mapped_action in self.active_buttons:
-                start_frame = self.active_buttons.pop(mapped_action)
-                self.past_buttons.append({
-                    "btn": mapped_action, 
-                    "start": start_frame, 
-                    "end": self.current_frame
-                })
+            held_mapped = [self.engine.key_map[k] for k in self.keys_held if k in self.engine.key_map]
+            self.engine.update_buffer(held_mapped)
+            
+            self.process_state_machine()
+            self.render_canvas()
+            
+        self.after(1, self.tick)
+
+    def process_state_machine(self):
+        now = time.time()
+        elapsed = now - self.state_timer
+        
+        if self.state == "COUNTDOWN":
+            if elapsed < 0.6: self.overlay_text = "3"
+            elif elapsed < 1.2: self.overlay_text = "2"
+            elif elapsed < 1.8: self.overlay_text = "1"
+            elif elapsed < 2.5: 
+                self.overlay_text = "ROCK!"
+                self.lbl_status.config(text="RECORDING", fg=ACCENT_COLOR)
+            else:
+                self.state = "PRACTICING"
+                self.overlay_text = ""
+                self.engine.last_input_frame = self.current_frame
+                self.combo_timer = 0
+                self.calculate_rhythm_timeline() # Build the track!
+                
+        elif self.state == "PRACTICING":
+            self.combo_timer += 1
+            
+        elif self.state == "RESULT":
+            if elapsed > 1.5:
+                self.canvas_bg = "#050508"
+                self.state = "IDLE"
+                self.lbl_status.config(text="PRESS RESET KEY", fg="#555")
+
+    def render_canvas(self):
+        self.canvas.delete("all")
+        self.canvas.config(bg=self.canvas_bg)
+        
+        self.draw_rhythm_track()
+        self.draw_virtual_hitbox()
+        
+        # Countdown Overlay
+        if getattr(self, "overlay_text", "") and self.state == "COUNTDOWN":
+            scale_mod = math.sin((time.time() * 10) % math.pi) * 10
+            font_size = int(50 + scale_mod)
+            color = ACCENT_COLOR if self.overlay_text == "ROCK!" else "#fff"
+            self.canvas.create_text(400, 60, text=self.overlay_text, font=("Impact", font_size, "italic"), fill=color)
+
+    def draw_rhythm_track(self):
+        # Draw track background
+        self.canvas.create_rectangle(0, TRACK_Y - 30, 800, TRACK_Y + 30, fill="#111", outline="#333")
+        
+        # Draw target blocks coming from the right
+        if self.state == "PRACTICING" or self.state == "RESULT":
+            for block in self.target_timeline:
+                if block["hit"]: continue # Hide it once hit
+                
+                # Calculate position: Playhead + (Target Frame - Current Combo Frame) * Speed
+                x_pos = PLAYHEAD_X + (block["abs_frame"] - self.combo_timer) * PIXELS_PER_FRAME
+                
+                # Draw if on screen
+                if x_pos > -50 and x_pos < 850:
+                    color = BTN_COLORS.get(block["btn"], "#fff")
+                    # Draw rhythm block
+                    self.canvas.create_rectangle(x_pos - 15, TRACK_Y - 20, x_pos + 15, TRACK_Y + 20, fill=color, outline="#fff", width=2)
+                    self.canvas.create_text(x_pos, TRACK_Y, text=block["full_text"], font=("Arial", 10, "bold"), fill="#000")
+
+        # Draw fixed Playhead
+        self.canvas.create_line(PLAYHEAD_X, TRACK_Y - 40, PLAYHEAD_X, TRACK_Y + 40, fill="#00ffcc", width=3)
+        self.canvas.create_polygon(PLAYHEAD_X - 8, TRACK_Y - 40, PLAYHEAD_X + 8, TRACK_Y - 40, PLAYHEAD_X, TRACK_Y - 25, fill="#00ffcc")
+        self.canvas.create_polygon(PLAYHEAD_X - 8, TRACK_Y + 40, PLAYHEAD_X + 8, TRACK_Y + 40, PLAYHEAD_X, TRACK_Y + 25, fill="#00ffcc")
+
+    def draw_virtual_hitbox(self):
+        """Draws the arcade button visualizer at the bottom half of the canvas"""
+        base_y = 170
+        held_mapped = [self.engine.key_map[k] for k in self.keys_held if k in self.engine.key_map]
+
+        # Layout mapping: (Logical_Key, X_offset, Y_offset, Radius)
+        buttons = [
+            # Directions (Left Hand)
+            ('left', 200, base_y + 10, 18),
+            ('down', 245, base_y + 20, 18),
+            ('right', 290, base_y + 10, 18),
+            ('up', 245, base_y + 60, 22), # Up is the big thumb button
+            # Attacks (Right Hand Arc)
+            ('P', 400, base_y + 5, 20),
+            ('S', 450, base_y - 10, 20),
+            ('D', 500, base_y - 10, 20),
+            ('K', 400, base_y + 50, 20),
+            ('H', 450, base_y + 35, 20)
+        ]
+
+        # Draw panel background
+        self.canvas.create_round_rect = self._create_round_rect # Helper binding
+        self.canvas.create_round_rect(170, 120, 540, 245, radius=20, fill="#151520", outline="#333", width=2)
+        self.canvas.create_text(350, 140, text="VIRTUAL HITBOX CONTROLLER", font=("Consolas", 10, "bold"), fill="#555")
+
+        for action, x, y, r in buttons:
+            is_active = action in held_mapped
+            
+            if action in ['up', 'down', 'left', 'right']:
+                base_color = "#222"
+                glow_color = "#fff" if is_active else "#111"
+            else:
+                base_color = "#222"
+                glow_color = BTN_COLORS.get(action, "#fff") if is_active else "#111"
+
+            # Draw outer ring
+            self.canvas.create_oval(x - r - 2, y - r - 2, x + r + 2, y + r + 2, fill="#333", outline="")
+            # Draw button surface
+            self.canvas.create_oval(x - r, y - r, x + r, y + r, fill=glow_color if is_active else base_color, outline=glow_color if is_active else "#000", width=2)
+            
+            # Draw label
+            label = action.upper() if action in ['P', 'K', 'S', 'H', 'D'] else ""
+            if label:
+                text_color = "#000" if is_active else "#777"
+                self.canvas.create_text(x, y, text=label, font=("Arial", 12, "bold"), fill=text_color)
+
+    def _create_round_rect(self, x1, y1, x2, y2, radius=25, **kwargs):
+        """Helper to draw a rounded rectangle on a Tkinter canvas."""
+        points = [x1+radius, y1, x1+radius, y1, x2-radius, y1, x2-radius, y1,
+                  x2, y1, x2, y1+radius, x2, y1+radius, x2, y2-radius, x2, y2-radius,
+                  x2, y2, x2-radius, y2, x2-radius, y2, x1+radius, y2, x1+radius, y2,
+                  x1, y2, x1, y2-radius, x1, y2-radius, x1, y1+radius, x1, y1+radius, x1, y1]
+        return self.canvas.create_polygon(points, **kwargs, smooth=True)
 
     # --- SETTINGS MENU ---
+    # [Settings code remains exactly the same as V1.4]
     def open_settings(self):
         win = tk.Toplevel(self)
         win.title("Map Hardware Controls")
@@ -261,106 +405,6 @@ class TrainerApp(tk.Tk):
         self.engine.save_config(self.temp_binds)
         self.keys_held.clear() 
         window.destroy()
-
-    # --- RENDER LOOP ---
-    def tick(self):
-        now = time.perf_counter()
-        elapsed = now - self.last_tick_time
-        
-        if elapsed >= self.frame_duration:
-            self.current_frame += 1
-            self.last_tick_time = now
-            
-            # Background logic
-            held_mapped = [self.engine.key_map[k] for k in self.keys_held if k in self.engine.key_map]
-            self.engine.update_buffer(held_mapped)
-            
-            # State Machine Logic
-            self.process_state_machine()
-            
-            # Rendering
-            self.render_timeline()
-            
-        self.after(1, self.tick)
-
-    def process_state_machine(self):
-        now = time.time()
-        elapsed = now - self.state_timer
-        
-        if self.state == "COUNTDOWN":
-            if elapsed < 0.6:
-                self.overlay_text = "3"
-            elif elapsed < 1.2:
-                self.overlay_text = "2"
-            elif elapsed < 1.8:
-                self.overlay_text = "1"
-            elif elapsed < 2.5:
-                self.overlay_text = "ROCK!"
-                self.lbl_status.config(text="RECORDING", fg=ACCENT_COLOR)
-            else:
-                self.state = "PRACTICING"
-                self.overlay_text = ""
-                # Re-sync frame counter so strict timing starts from exactly "ROCK!"
-                self.engine.last_input_frame = self.current_frame
-                
-        elif self.state == "RESULT":
-            # Fade background back to normal over 1 second
-            if elapsed > 1.0:
-                self.canvas_bg = "#050508"
-                self.state = "IDLE"
-                self.lbl_status.config(text="PRESS RESET KEY", fg="#555")
-
-    def render_timeline(self):
-        self.canvas.delete("all")
-        self.canvas.config(bg=self.canvas_bg)
-        
-        # Grid
-        for i in range(0, 100):
-            frame_offset = self.current_frame % 10
-            x = PLAYHEAD_X - (i * 10 * PIXELS_PER_FRAME) + (frame_offset * PIXELS_PER_FRAME)
-            if x > 0:
-                self.canvas.create_line(x, 0, x, 140, fill="#1a1a24")
-
-        # Past Holds
-        cleanup_threshold = self.current_frame - int(PLAYHEAD_X / PIXELS_PER_FRAME) - 20
-        self.past_buttons = [b for b in self.past_buttons if b["end"] > cleanup_threshold]
-        for btn_data in self.past_buttons:
-            self.draw_button_block(btn_data["btn"], btn_data["start"], btn_data["end"])
-
-        # Active Holds
-        for btn, start_frame in self.active_buttons.items():
-            self.draw_button_block(btn, start_frame, self.current_frame)
-
-        # Directional Buffer
-        buf_len = len(self.engine.frame_buffer)
-        for i, dir_str in enumerate(self.engine.frame_buffer):
-            frames_ago = (buf_len - 1) - i 
-            x = PLAYHEAD_X - (frames_ago * PIXELS_PER_FRAME)
-            arrow = ARROW_MAP.get(dir_str, "")
-            color = "#fff" if dir_str != "5" else "#333" 
-            if arrow:
-                self.canvas.create_text(x, TRACK_DIR_Y, text=arrow, fill=color, font=("Arial", 14))
-
-        # Playhead
-        self.canvas.create_line(PLAYHEAD_X, 0, PLAYHEAD_X, 140, fill="#00ffcc", width=2)
-        
-        # State Overlays
-        if getattr(self, "overlay_text", "") and self.state == "COUNTDOWN":
-            # Bounce scale effect based on sin wave
-            scale_mod = math.sin((time.time() * 10) % math.pi) * 10
-            font_size = int(60 + scale_mod)
-            color = ACCENT_COLOR if self.overlay_text == "ROCK!" else "#fff"
-            self.canvas.create_text(PLAYHEAD_X / 2, 70, text=self.overlay_text, font=("Impact", font_size, "italic"), fill=color)
-
-    def draw_button_block(self, btn, start_frame, end_frame):
-        start_x = PLAYHEAD_X - ((self.current_frame - start_frame) * PIXELS_PER_FRAME)
-        end_x = PLAYHEAD_X - ((self.current_frame - end_frame) * PIXELS_PER_FRAME)
-        if end_x - start_x < PIXELS_PER_FRAME:
-            end_x = start_x + PIXELS_PER_FRAME
-            
-        color = BTN_COLORS.get(btn, "#fff")
-        self.canvas.create_rectangle(start_x, TRACK_BUTTON_Y - 18, end_x, TRACK_BUTTON_Y + 18, fill=color, outline="#000", width=2)
-        self.canvas.create_text(start_x + 8, TRACK_BUTTON_Y, text=btn, fill="#000", font=("Arial", 12, "bold"), anchor=tk.W)
 
 if __name__ == "__main__":
     app = TrainerApp()
