@@ -30,8 +30,8 @@ BTN_COLORS = {
 class TrainerApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("GGST Combo Trainer V1.6 - Rhythm Engine & Full Keyboard")
-        self.geometry("800x750")
+        self.title("GGST Input Detector")
+        self.geometry("800x600")
         self.configure(bg=BG_COLOR)
         
         self.engine = InputEngine()
@@ -41,15 +41,6 @@ class TrainerApp(tk.Tk):
         self.frame_duration = 1.0 / self.fps
         self.current_frame = 0
         self.last_tick_time = time.perf_counter()
-        
-        # Training Environment State
-        self.state = "IDLE" # IDLE, COUNTDOWN, PRACTICING, RESULT
-        self.state_timer = 0
-        self.result_timer = 0
-        self.combo_timer = 0 
-        self.target_timeline = [] 
-        self.canvas_bg = "#050508"
-        self.overlay_text = ""
         
         # Input State
         self.keys_held = set()
@@ -79,11 +70,6 @@ class TrainerApp(tk.Tk):
         self.char_cb.pack(side=tk.LEFT, padx=5)
         self.char_cb.bind("<<ComboboxSelected>>", self.on_char_select)
 
-        self.combo_var = tk.StringVar()
-        self.combo_cb = ttk.Combobox(menu_frame, textvariable=self.combo_var, state="readonly", width=30)
-        self.combo_cb.pack(side=tk.LEFT, padx=5)
-        self.combo_cb.bind("<<ComboboxSelected>>", self.on_combo_select)
-
         self.btn_settings = ttk.Button(menu_frame, text="⚙️ Settings", command=self.open_settings)
         self.btn_settings.pack(side=tk.RIGHT, padx=5)
 
@@ -91,17 +77,17 @@ class TrainerApp(tk.Tk):
         target_frame = tk.Frame(self, bg=BG_COLOR)
         target_frame.pack(fill=tk.X, pady=5)
         
-        self.lbl_status = tk.Label(target_frame, text="STANDBY", font=("Impact", 14), bg=BG_COLOR, fg="#555")
+        self.lbl_status = tk.Label(target_frame, text="Select a character", font=("Impact", 14), bg=BG_COLOR, fg="#555")
         self.lbl_status.pack()
 
-        self.lbl_target = tk.Label(target_frame, text="Select a route", font=("Arial Black", 24), bg=BG_COLOR, fg="white")
+        self.lbl_target = tk.Label(target_frame, text="Input Detector", font=("Arial Black", 24), bg=BG_COLOR, fg="white")
         self.lbl_target.pack()
 
-        # Canvas for Rhythm Track and Visualizer
+        # Canvas for Visualizer
         canvas_container = tk.Frame(self, bg=BG_COLOR, padx=15)
         canvas_container.pack(fill=tk.X)
         
-        self.canvas = tk.Canvas(canvas_container, height=270, bg=self.canvas_bg, highlightthickness=2, highlightbackground="#333")
+        self.canvas = tk.Canvas(canvas_container, height=270, bg="#050508", highlightthickness=2, highlightbackground="#333")
         self.canvas.pack(fill=tk.X, pady=5)
         self.canvas.create_round_rect = self._create_round_rect 
 
@@ -123,72 +109,10 @@ class TrainerApp(tk.Tk):
             self.on_char_select(None)
 
     def on_char_select(self, event):
-        combos = self.engine.get_combos(self.char_var.get())
-        self.combo_cb["values"] = combos
-        if combos:
-            self.combo_cb.current(0)
-            self.on_combo_select(None)
-
-    def on_combo_select(self, event):
-        if self.combo_var.get():
-            self.engine.load_combo(self.char_var.get(), self.combo_var.get())
-            self.log_message(f"Loaded Route: {self.combo_var.get()}", "#fff")
-            self.trigger_reset()
-
-    def update_target_display(self):
-        if self.engine.current_combo and self.engine.combo_step < len(self.engine.current_combo["sequence"]):
-            target = self.engine.current_combo["sequence"][self.engine.combo_step]
-            self.lbl_target.config(text=f"{target['expected']} ({target['move']})", fg="white")
-
-    # --- RHYTHM GAME LOGIC ---
-    def calculate_rhythm_timeline(self):
-        """Pre-calculates absolute frames for blocks so they can spawn early."""
-        self.target_timeline = []
-        if not self.engine.current_combo: return
-        
-        accumulated_frames = 0
-        for i, step in enumerate(self.engine.current_combo["sequence"]):
-            max_f = step["max_frames"]
-            if i > 0:
-                accumulated_frames += max_f if max_f > 0 else 30 
-                
-            clean_btn = step["expected"].replace("c.", "").replace("f.", "").replace("j.", "")[-1]
-            self.target_timeline.append({
-                "step_index": i,
-                "abs_frame": accumulated_frames,
-                "btn": clean_btn,
-                "full_text": step["expected"],
-                "hit": False 
-            })
-
-    def trigger_reset(self):
-        self.state = "COUNTDOWN"
-        self.state_timer = time.time()
-        self.engine.combo_step = 0
-        
-        # Start timer at -150 frames (2.5s) so the first block rolls in from the right
-        self.combo_timer = -150 
-        self.calculate_rhythm_timeline()
-        self.engine.last_input_frame = self.current_frame
-        
-        self.canvas_bg = "#050508"
-        self.lbl_status.config(text="RESETTING...", fg="#ffaa00")
-        self.update_target_display()
-        self.log_message("--- POSITION RESET ---")
-
-    def trigger_result(self, success, message):
-        self.state = "RESULT"
-        self.state_timer = time.time()
-        if success:
-            self.lbl_status.config(text="EXCELLENT", fg="#00ff88")
-            self.lbl_target.config(text="COMBO COMPLETE!", fg="#00ff88")
-            self.canvas_bg = "#002211" 
-        else:
-            self.lbl_status.config(text="DROPPED", fg="#ff2a00")
-            self.lbl_target.config(text=message, fg="#ff2a00")
-            self.canvas_bg = "#330000" 
-            
-        self.result_timer = 0 
+        self.engine.current_char = self.char_var.get()
+        self.lbl_status.config(text=f"Detecting inputs for {self.char_var.get()}", fg=TEXT_COLOR)
+        self.lbl_target.config(text="Perform a move", fg="white")
+        self.log_message(f"Selected character: {self.char_var.get()}", "#fff")
 
     # --- INPUT LOGIC ---
     def on_key_press(self, event):
@@ -198,25 +122,18 @@ class TrainerApp(tk.Tk):
             mapped_action = self.engine.key_map.get(key)
             
             if mapped_action == 'RESET':
-                self.trigger_reset()
+                self.lbl_target.config(text="Perform a move", fg="white")
                 return
 
-            if mapped_action in ['P', 'K', 'S', 'H', 'D'] or mapped_action in ['up', 'down', 'left', 'right']:
-                if self.state == "PRACTICING":
-                    success, message = self.engine.check_input(mapped_action, self.current_frame)
-                    
-                    if success:
-                        if self.engine.combo_step > 0:
-                            self.target_timeline[self.engine.combo_step - 1]["hit"] = True
-                            
-                        if message == "COMBO_COMPLETE":
-                            self.trigger_result(True, "")
-                        else:
-                            self.log_message(f"HIT: {message}")
-                            self.update_target_display()
-                    else:
-                        self.log_message(f"MISS: {message}")
-                        self.trigger_result(False, message)
+            if mapped_action in ['P', 'K', 'S', 'H', 'D']:
+                success, message = self.engine.check_input(mapped_action, self.current_frame)
+                
+                if success:
+                    self.lbl_target.config(text=message, fg="#00ff88")
+                    self.log_message(f"Detected: {message}")
+                else:
+                    self.lbl_target.config(text="Unknown input", fg="#ff2a00")
+                    self.log_message(f"Unknown: {message}")
 
     def on_key_release(self, event):
         key = event.keysym.lower()
@@ -232,7 +149,7 @@ class TrainerApp(tk.Tk):
         win.transient(self)
         win.grab_set() 
         
-        ttk.Label(win, text="VISUALIZER TYPE", bg=BG_COLOR, fg=ACCENT_COLOR, font=("Arial", 10, "bold")).pack(pady=(15, 5))
+        tk.Label(win, text="VISUALIZER TYPE", bg=BG_COLOR, fg=ACCENT_COLOR, font=("Arial", 10, "bold")).pack(pady=(15, 5))
         self.temp_vis = tk.StringVar(value=self.engine.prefs.get("visualizer", "hitbox"))
         
         vis_frame = tk.Frame(win, bg=BG_COLOR)
@@ -241,7 +158,7 @@ class TrainerApp(tk.Tk):
         ttk.Radiobutton(vis_frame, text="Keyboard", variable=self.temp_vis, value="keyboard", bg=BG_COLOR, fg="white", selectcolor="#333").pack(side=tk.LEFT, padx=10)
 
         tk.Label(win, text="-"*30, bg=BG_COLOR, fg="#333").pack(pady=10)
-        ttk.Label(win, text="KEYBINDS: Click an action, press physical key.", bg=BG_COLOR, fg="white", pady=10).pack()
+        tk.Label(win, text="KEYBINDS: Click an action, press physical key.", bg=BG_COLOR, fg="white", pady=10).pack()
         
         self.temp_binds = self.engine.key_map.copy()
         action_to_key = {v: k for k, v in self.temp_binds.items()}
@@ -252,7 +169,7 @@ class TrainerApp(tk.Tk):
         
         self.binding_buttons = {}
         for idx, action in enumerate(actions):
-            ttk.Label(frame, text=f"{action.upper()}:", bg=BG_COLOR, fg=TEXT_COLOR, font=("Arial", 10, "bold")).grid(row=idx, column=0, pady=6, sticky=tk.E)
+            tk.Label(frame, text=f"{action.upper()}:", bg=BG_COLOR, fg=TEXT_COLOR, font=("Arial", 10, "bold")).grid(row=idx, column=0, pady=6, sticky=tk.E)
             current_key = action_to_key.get(action, "UNBOUND")
             
             btn = tk.Button(frame, text=current_key.upper(), bg="#333", fg="white", width=12, relief=tk.FLAT)
@@ -300,86 +217,19 @@ class TrainerApp(tk.Tk):
             held_mapped = [self.engine.key_map[k] for k in self.keys_held if k in self.engine.key_map]
             self.engine.update_buffer(held_mapped)
             
-            self.process_state_machine()
             self.render_canvas()
             
         self.after(1, self.tick)
 
-    def process_state_machine(self):
-        if self.state in ["COUNTDOWN", "PRACTICING"]:
-            self.combo_timer += 1
-
-        if self.state == "COUNTDOWN":
-            if self.combo_timer < -110: 
-                self.overlay_text = "3"
-            elif self.combo_timer < -70: 
-                self.overlay_text = "2"
-            elif self.combo_timer < -30: 
-                self.overlay_text = "1"
-            elif self.combo_timer < 0: 
-                self.overlay_text = "ROCK!"
-                self.lbl_status.config(text="RECORDING", fg=ACCENT_COLOR)
-            else:
-                self.state = "PRACTICING"
-                self.overlay_text = ""
-                # Hard sync logic frame to visual frame 0
-                self.engine.last_input_frame = self.current_frame 
-                
-        elif self.state == "RESULT":
-            self.result_timer += 1
-            if self.result_timer > 90:
-                self.canvas_bg = "#050508"
-                self.state = "IDLE"
-                self.lbl_status.config(text="PRESS RESET KEY", fg="#555")
-
     # --- RENDERING ---
     def render_canvas(self):
         self.canvas.delete("all")
-        self.canvas.config(bg=self.canvas_bg)
-        
-        self.draw_rhythm_track()
+        self.canvas.config(bg="#050508")
         
         if self.engine.prefs.get("visualizer") == "keyboard":
             self.draw_full_keyboard()
         else:
             self.draw_hitbox_visualizer()
-
-        # Countdown Overlay
-        if getattr(self, "overlay_text", "") and self.state == "COUNTDOWN":
-            scale_mod = math.sin(self.combo_timer * 0.1) * 10
-            font_size = int(50 + scale_mod)
-            color = ACCENT_COLOR if self.overlay_text == "ROCK!" else "#fff"
-            self.canvas.create_text(400, 60, text=self.overlay_text, font=("Impact", font_size, "italic"), fill=color)
-
-    def draw_rhythm_track(self):
-        # Draw track background
-        self.canvas.create_rectangle(0, TRACK_Y - 30, 800, TRACK_Y + 30, fill="#111", outline="#333")
-        
-        # Draw blocks
-        if self.state in ["COUNTDOWN", "PRACTICING", "RESULT"]:
-            for block in self.target_timeline:
-                if block["hit"]: continue 
-                
-                # Identify actual button to assign color
-                combat_btn_re = re.compile(r"[P|K|S|H|D|RESET]")
-                match = combat_btn_re.search(block["full_text"])
-                target_combat_btn = match.group(0) if match else block["btn"]
-                is_dir = target_combat_btn not in ['P', 'K', 'S', 'H', 'D', 'RESET']
-
-                # Position slides left as combo_timer increases
-                x_pos = PLAYHEAD_X + (block["abs_frame"] - self.combo_timer) * PIXELS_PER_FRAME
-                
-                if -50 < x_pos < 850:
-                    r_color = BTN_COLORS.get(target_combat_btn, "#fff") if not is_dir else "#333"
-                    width_mod = 2 if not is_dir else 1
-                    
-                    self.canvas.create_rectangle(x_pos - 15, TRACK_Y - 20, x_pos + 15, TRACK_Y + 20, fill=r_color, outline="#fff", width=width_mod)
-                    self.canvas.create_text(x_pos, TRACK_Y, text=block["full_text"], font=("Arial", 10, "bold"), fill="#000" if not is_dir else "#fff")
-
-        # Draw Playhead
-        self.canvas.create_line(PLAYHEAD_X, TRACK_Y - 40, PLAYHEAD_X, TRACK_Y + 40, fill="#00ffcc", width=3)
-        self.canvas.create_polygon(PLAYHEAD_X - 8, TRACK_Y - 40, PLAYHEAD_X + 8, TRACK_Y - 40, PLAYHEAD_X, TRACK_Y - 25, fill="#00ffcc")
-        self.canvas.create_polygon(PLAYHEAD_X - 8, TRACK_Y + 40, PLAYHEAD_X + 8, TRACK_Y + 40, PLAYHEAD_X, TRACK_Y + 25, fill="#00ffcc")
 
     def _create_round_rect(self, x1, y1, x2, y2, radius=25, **kwargs):
         points = [x1+radius, y1, x1+radius, y1, x2-radius, y1, x2-radius, y1,
@@ -490,7 +340,7 @@ class TrainerApp(tk.Tk):
             else:
                  for key_text in row:
                       if key_text in ['U','I','O','J','K']:
-                           combat_btn_re = re.compile(r"[P|K|S|H|D|RESET]")
+                           combat_btn_re = re.compile(r"(P|K|S|H|D|RESET)")
                            match = combat_btn_re.search(self.engine.key_map.get(key_text.lower(), "X"))
                            mapped_action = match.group(0) if match else 'DIR' 
                       elif key_text in ['W','A','S','D']:

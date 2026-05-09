@@ -1,0 +1,28 @@
+{
+  "characters": [
+    "Elphelt Valentine",
+    "Johnny",
+    "Ky Kiske",
+    "May",
+    "Lucy"
+  ],
+  "keybinds": {
+    "w": "up",
+    "a": "left",
+    "s": "down",
+    "d": "right",
+    "u": "P",
+    "i": "K",
+    "o": "S",
+    "j": "H",
+    "k": "D",
+    "space": "RESET",
+    "up": "up",
+    "down": "down",
+    "left": "left",
+    "right": "right"
+  },
+  "prefs": {
+    "visualizer": "hitbox"
+  }
+}
